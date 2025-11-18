@@ -1,0 +1,36 @@
+{
+  "extends": "@react-native/typescript-config/tsconfig.json",
+  "exclude": ["**/node_modules", "**/Pods"],
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "esnext",
+    "lib": ["esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": false,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "jsx": "react-native",
+    "baseUrl": ".",
+
+    "paths": {
+      "@global": ["./src/global/index.ts"],
+      "@global/*": ["./src/global/*"],
+      "@features/*": ["./src/features/*"],
+      "@navigation/*": ["./src/navigation/*"],
+      "@staticdata/*": ["./src/staticdata/*"],
+     
+      /* OPTIONAL EXTRA ALIASES (recommended for large apps) */
+      // "@components/*": ["components/*"],
+      // "@screens/*": ["screens/*"],
+      // "@hooks/*": ["hooks/*"],
+      // "@utils/*": ["utils/*"],
+      // "@services/*": ["services/*"],
+      // "@navigation/*": ["navigation/*"],
+      // "@store/*": ["store/*"]
+    }
+  }
+}
