@@ -22,15 +22,8 @@
       "@features/*": ["./src/features/*"],
       "@navigation/*": ["./src/navigation/*"],
       "@staticdata/*": ["./src/staticdata/*"],
-     
-      /* OPTIONAL EXTRA ALIASES (recommended for large apps) */
-      // "@components/*": ["components/*"],
-      // "@screens/*": ["screens/*"],
-      // "@hooks/*": ["hooks/*"],
-      // "@utils/*": ["utils/*"],
-      // "@services/*": ["services/*"],
-      // "@navigation/*": ["navigation/*"],
-      // "@store/*": ["store/*"]
+      "@storage/*": ["./src/storage/*"],
+  
     }
   }
 }

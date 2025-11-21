@@ -1,8 +1,12 @@
 import React, { useMemo, useState } from 'react'
 import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import type { KeyboardTypeOptions, StyleProp, TextStyle } from 'react-native'
-import { Colors } from '@global'
+import { Colors, getCurrentTimeMilliSeconds } from '@global'
 import { ScaledSheet } from 'react-native-size-matters'
+import EventRepository from '@storage/sqlite/repository/EventRepository'
+import type { EventSchema } from '@storage/sqlite/schema/EventSchema'
+import { useSelector } from 'react-redux'
+import type { IRootState } from '@storage/redux/configureStore'
 
 type EventFormState = {
   eventName: string
@@ -30,6 +34,7 @@ const AddEventScreen = () => {
     location: false,
   })
   const [hasSubmitted, setHasSubmitted] = useState(false)
+  const user = useSelector((state: IRootState) => state.user)
 
   const errors = useMemo(() => validateForm(form), [form])
   const isFormValid = Object.keys(errors).length === 0
@@ -42,29 +47,53 @@ const AddEventScreen = () => {
     setTouched(prev => ({ ...prev, [key]: true }))
   }
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     setHasSubmitted(true)
 
     if (!isFormValid) {
       return
     }
 
-    Alert.alert('Success', 'Event saved successfully!')
-    console.log('Event saved', {
-      ...form,
-      maxPlayers: Number(form.maxPlayers),
-      dateTime: new Date(form.dateTime).toISOString(),
-    })
+    const eventDate = new Date(form.dateTime)
+    console.log("user Id :",user.loggedInUser_ID);
+    console.log("user Name :", user.loggedInName);
+    const newEvent: EventSchema = {
+      eventTitle: form.eventName.trim(),
+      eventDescription: form.description.trim(),
+      eventLocation: form.location.trim(),
+      maxPlayerLimit: parseInt(form.maxPlayers, 10),
+      eventDateTime: Math.floor(eventDate.getTime()),
+      createdDate: getCurrentTimeMilliSeconds(),
+      hostedBy: {
+        id: user.loggedInUser_ID,
+        name: user.loggedInName || 'User',
+      },
+      participants: [],
+    }
 
-    setForm(initialFormState)
-    setTouched({
-      eventName: false,
-      description: false,
-      maxPlayers: false,
-      dateTime: false,
-      location: false,
-    })
-    setHasSubmitted(false)
+    try {
+      const created = await EventRepository.createEvent(newEvent)
+
+      if (!created) {
+        Alert.alert('Error', 'Could not save event. Please try again.')
+        return
+      }
+
+      Alert.alert('Success', 'Event saved successfully!')
+
+      setForm(initialFormState)
+      setTouched({
+        eventName: false,
+        description: false,
+        maxPlayers: false,
+        dateTime: false,
+        location: false,
+      })
+      setHasSubmitted(false)
+    } catch (error) {
+      console.error('Error saving event', error)
+      Alert.alert('Error', 'An unexpected error occurred while saving the event.')
+    }
   }
 
   const showError = (key: keyof EventFormState) =>

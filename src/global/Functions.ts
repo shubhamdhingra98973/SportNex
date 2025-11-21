@@ -1,3 +1,4 @@
+import {ObjectId} from 'bson';
 
 
 export const formatDateE = (timestamp: string) => {
@@ -9,4 +10,16 @@ export const formatDateE = (timestamp: string) => {
       hour: '2-digit',
       minute: '2-digit',
     })
+};
+
+export const generateNewObjectIdE = () => {
+  return new ObjectId().toHexString();
+};
+
+export const getCurrentTimeInSecondsE = () => {
+  return Math.floor(new Date().getTime() / 1000);
+};
+
+export const getCurrentTimeMilliSecondsE = () => {
+  return Math.floor(new Date().getTime());
 };

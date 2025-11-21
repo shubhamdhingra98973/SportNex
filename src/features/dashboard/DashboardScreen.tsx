@@ -1,16 +1,29 @@
-import React, { useLayoutEffect, useMemo, useState } from 'react'
-import { Alert, FlatList, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-import { useNavigation, useRoute } from '@react-navigation/native'
-import events from '../../staticdata/events.json'
+import React, { useCallback, useLayoutEffect, useState } from 'react'
+import { ActivityIndicator, Alert, FlatList, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native'
+import { useSelector } from 'react-redux'
 import { ScaledSheet } from 'react-native-size-matters'
 import {Colors , formatDate } from '@global'
 import { StackNavigationProp } from '@react-navigation/stack'
 import { RootStackParamList } from '@navigation/types'
+import { IRootState } from '@storage/redux/configureStore'
+import EventRepository from '@storage/sqlite/repository/EventRepository'
+import type { EventSchema } from '@storage/sqlite/schema/EventSchema'
 
-type Event = (typeof events)[number]
+const normalizeTimestampToSecondsString = (timestamp: number | string): string => {
+  const numericValue = Number(timestamp)
+  if (!Number.isFinite(numericValue) || numericValue <= 0) {
+    return '0'
+  }
 
-const EventCard = ({ event, onPress }: { event: Event; onPress: () => void }) => {
-  const confirmed = event.participants.filter(p => p.status === 'confirmed').length
+  const needsConversion = numericValue > 1e11
+  const seconds = needsConversion ? Math.floor(numericValue / 1000) : Math.floor(numericValue)
+  return seconds.toString()
+}
+
+const EventCard = ({ event, onPress }: { event: EventSchema; onPress: () => void }) => {
+  const confirmed = (event.participants ?? []).filter(p => p.status === 'confirmed').length
+  const formattedDate = formatDate(normalizeTimestampToSecondsString(event.eventDateTime))
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.85}>
       <Text style={styles.title}>{event.eventTitle}</Text>
@@ -18,7 +31,7 @@ const EventCard = ({ event, onPress }: { event: Event; onPress: () => void }) =>
       <Text style={styles.meta}>Organiser : {event.hostedBy.name}</Text>
       <Text style={styles.meta}>Location : {event.eventLocation}</Text>
       <Text style={styles.meta}>
-        {confirmed}/{event.maxPlayerLimit} confirmed · {formatDate(event.eventDateTime)}
+        {confirmed}/{event.maxPlayerLimit} confirmed · {formattedDate}
       </Text>
     </TouchableOpacity>
   )
@@ -27,9 +40,14 @@ const EventCard = ({ event, onPress }: { event: Event; onPress: () => void }) =>
 const DashboardScreen = () => {
   const route = useRoute()
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>()
-  const { token } = (route.params as { token?: string }) ?? {}
-  const data = useMemo(() => events, [])
-  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null)
+  const { token: tokenFromParams } = (route.params as { token?: string }) ?? {}
+  const { loggedInToken, loggedInUser_ID } = useSelector((state: IRootState) => state.user)
+  // Use token from params if available, otherwise use token from Redux state
+  const token = tokenFromParams || loggedInToken || loggedInUser_ID
+  const [events, setEvents] = useState<EventSchema[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [selectedEvent, setSelectedEvent] = useState<EventSchema | null>(null)
   const [requestTracker, setRequestTracker] = useState<Record<string, boolean>>({})
 
   useLayoutEffect(() => {
@@ -45,8 +63,28 @@ const DashboardScreen = () => {
   const selectedParticipants = selectedEvent?.participants ?? []
   const selectedEventKey = selectedEvent ? `${selectedEvent.eventTitle}-${selectedEvent.createdDate}` : ''
   const hasApplied =
-    !!selectedEvent &&
-    (selectedParticipants.some(p => String(p.id) === String(token)) || (selectedEventKey && requestTracker[selectedEventKey]))
+  !!selectedEvent &&
+  (selectedParticipants.some(p => String(p.id) === String(token)) || (selectedEventKey && requestTracker[selectedEventKey]))
+
+  const fetchEvents = useCallback(async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const fetchedEvents = await EventRepository.getAllEvents()
+      setEvents(fetchedEvents)
+    } catch (err) {
+      console.error('Failed to load events', err)
+      setError('Unable to load events.')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchEvents()
+    }, [fetchEvents]),
+  )
 
   const closeModal = () => setSelectedEvent(null)
 
@@ -60,8 +98,19 @@ const DashboardScreen = () => {
     <View style={styles.container}>
       <FlatList
         contentContainerStyle={styles.listContent}
-        data={data}
-        keyExtractor={(item, index) => `${item.eventTitle}-${index}`}
+        data={events}
+        refreshing={loading}
+        onRefresh={fetchEvents}
+        keyExtractor={(item, index) => item.id ?? `${item.eventTitle}-${item.createdDate ?? index}`}
+        ListEmptyComponent={
+          <View style={styles.emptyListContainer}>
+            {loading ? (
+              <ActivityIndicator size="small" color={Colors.primaryBlue} />
+            ) : (
+              <Text style={styles.emptyStateText}>{error ?? 'No events found yet.'}</Text>
+            )}
+          </View>
+        }
         renderItem={({ item }) => (
           <EventCard
             event={item}
@@ -76,7 +125,6 @@ const DashboardScreen = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{selectedEvent?.eventTitle}</Text>
-            <Text style={styles.modalSubtitle}>Players joined</Text>
             <ScrollView style={styles.participantList} contentContainerStyle={styles.participantListContent}>
               {selectedParticipants.length === 0 ? (
                 <Text style={styles.emptyStateText}>No players have joined yet.</Text>
@@ -201,6 +249,12 @@ const styles = ScaledSheet.create({
   emptyStateText: {
     color: '#8a93a6',
     textAlign: 'center',
+  },
+  emptyListContainer: {
+    flex: 1,
+    minHeight: '200@vs',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   participantRow: {
     flexDirection: 'row',

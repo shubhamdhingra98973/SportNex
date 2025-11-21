@@ -1,5 +1,5 @@
 export type RootStackParamList = {
   LoginRegisterScreen: undefined;
-  DashboardScreen: {token : string};
+  DashboardScreen: {token?: string};
   AddEventScreen: undefined;
 };

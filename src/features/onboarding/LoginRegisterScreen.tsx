@@ -1,34 +1,149 @@
-import { Button, Text, View, TextInput } from 'react-native';
+import { Button, Text, View, TextInput, Alert, ActivityIndicator } from 'react-native';
 import React, { useState } from 'react';
 import {
   SafeAreaView,
   useSafeAreaInsets,
 } from 'react-native-safe-area-context';
 import { ScaledSheet } from 'react-native-size-matters';
-import { Colors } from '@global';
-import {useNavigation} from '@react-navigation/native';
-import {StackNavigationProp} from "@react-navigation/stack";
-import {RootStackParamList} from '@navigation/types';
+import { Colors, generateNewObjectId, getCurrentTimeMilliSeconds } from '@global';
+import { useNavigation } from '@react-navigation/native';
+import { StackNavigationProp } from "@react-navigation/stack";
+import { RootStackParamList } from '@navigation/types';
+import { useDispatch } from 'react-redux';
+import UserRepository from '@storage/sqlite/repository/UserRepository';
+import { login, register } from '@storage/redux/actions/userActions';
+import { saveAuthState } from '@storage/authStorage';
 
 type NavProp = StackNavigationProp<RootStackParamList, "LoginRegisterScreen">;
 
 const LoginRegisterScreen = () => {
   const safeAreaInsets = useSafeAreaInsets();
+  const dispatch = useDispatch();
   const [mode, setMode] = useState('login');
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const navigation = useNavigation<NavProp>();
-  // const { login, register } = useAuth();
+
+  const validateInputs = (): boolean => {
+    if (!username.trim()) {
+      setError('Username is required');
+      return false;
+    }
+    if (!password.trim()) {
+      setError('Password is required');
+      return false;
+    }
+    if (mode === 'register' && !name.trim()) {
+      setError('Name is required');
+      return false;
+    }
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters');
+      return false;
+    }
+    return true;
+  };
 
   async function submit() {
-    if (mode === 'login') {
-      // await login(username, password);
-    } else {
-      // await register(username, password);
-    }
-    navigation.navigate("DashboardScreen" , {token : "CXCcsddsd"});
+    setError('');
 
+    if (!validateInputs()) {
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      if (mode === 'login') {
+        // Login logic
+        const user = await UserRepository.loginUser(username.trim(), password);
+
+        if (user) {
+          // Generate a simple token (in production, use proper JWT or similar)
+          const token = `token_${user.id}_${Date.now()}`;
+
+          // Dispatch login action
+          dispatch(login(token, user.id?.toString() || '', 'user', user.name?.toString()));
+
+          // Save auth state to AsyncStorage
+          await saveAuthState({
+            loggedInToken: token,
+            loggedInUser_ID: user.id?.toString() || '',
+            loggedInRole: 'user',
+            loggedInName: user.name || '',
+          });
+
+          // Navigate to dashboard
+          navigation.navigate("DashboardScreen", { token });
+        } else {
+          setError('Invalid username or password');
+        }
+      } else {
+        // Register logic
+        const usernameExists = await UserRepository.checkUsernameExists(
+          username.trim(),
+        );
+
+        if (usernameExists) {
+          setError('Username already exists. Please choose a different one.');
+          setLoading(false);
+          return;
+        }
+
+        const user = await UserRepository.registerUser({
+          id: generateNewObjectId(),
+          name: name.trim(),
+          username: username.trim(),
+          password: password.trim(),
+          created_at: getCurrentTimeMilliSeconds()
+        });
+
+        if (user) {
+          // Generate a simple token
+          const token = `token_${user.id}_${Date.now()}`;
+
+          // Dispatch register action
+          dispatch(register(token, user.id?.toString() || '', 'user', user.name?.toString()));
+
+          // Save auth state to AsyncStorage
+          await saveAuthState({
+            loggedInToken: token,
+            loggedInUser_ID: user.id?.toString() || '',
+            loggedInRole: 'user',
+            loggedInName: user.name || '',
+          });
+
+          // Show success message
+          Alert.alert('Success', 'Registration successful!', [
+            {
+              text: 'OK',
+              onPress: () => {
+                // Navigate to dashboard
+                navigation.navigate("DashboardScreen", { token });
+              },
+            },
+          ]);
+        } else {
+          setError('Registration failed. Please try again.');
+        }
+      }
+    } catch (err: any) {
+      setError(err.message || 'An error occurred. Please try again.');
+      console.error('Error:', err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const switchMode = () => {
+    setMode(mode === 'login' ? 'register' : 'login');
+    setError('');
+    setName('');
+    setUsername('');
+    setPassword('');
   }
   return (
     <View style={styles.container}>
@@ -41,32 +156,53 @@ const LoginRegisterScreen = () => {
             <TextInput
               placeholder="Name"
               value={name}
-              onChangeText={setName}
+              onChangeText={(text) => {
+                setName(text);
+                setError('');
+              }}
               style={styles.txtInptStyles}
+              editable={!loading}
             />
           )}
           <TextInput
             placeholder="Username"
             value={username}
-            onChangeText={setUsername}
+            onChangeText={(text) => {
+              setUsername(text);
+              setError('');
+            }}
             style={styles.txtInptStyles}
+            editable={!loading}
+            autoCapitalize="none"
           />
           <TextInput
             placeholder="Password"
             value={password}
             secureTextEntry
-            onChangeText={setPassword}
+            onChangeText={(text) => {
+              setPassword(text);
+              setError('');
+            }}
             style={styles.txtInputPwdStyles}
+            editable={!loading}
           />
+          {error ? (
+            <Text style={styles.errorText}>{error}</Text>
+          ) : null}
           <View style={styles.btnStyles}>
-            <Button
-              color={Colors.white}
-              title={mode === 'login' ? 'Login' : 'Register'}
-              onPress={submit}
-            />
+            {loading ? (
+              <ActivityIndicator color={Colors.white} />
+            ) : (
+              <Button
+                color={Colors.white}
+                title={mode === 'login' ? 'Login' : 'Register'}
+                onPress={submit}
+                disabled={loading}
+              />
+            )}
           </View>
           <Text
-            onPress={() => setMode(mode === 'login' ? 'register' : 'login')}
+            onPress={switchMode}
             style={styles.registerTextStyes}
           >
             {mode === 'login'
@@ -101,7 +237,19 @@ const styles = ScaledSheet.create({
     marginHorizontal: '20@s',
   },
 
-  registerTextStyes: { textAlign: 'center', color: 'blue', marginTop: '10@vs' },
+  registerTextStyes: { 
+    textAlign: 'center', 
+    color: 'blue',
+    marginTop: '10@vs'
+  },
+
+  errorText: {
+    color: 'red',
+    fontSize: '14@ms',
+    marginTop: '10@vs',
+    textAlign: 'center',
+    marginHorizontal: '20@s',
+  },
 
   txtInptStyles: {
     borderWidth: '1@s',
@@ -121,7 +269,12 @@ const styles = ScaledSheet.create({
     fontSize: '18@ms',
   },
 
-  textHeading: { fontSize: '24@ms', fontWeight: 'bold', textAlign: 'center' },
+  textHeading: { 
+    fontSize: '24@ms',
+    fontWeight: 'bold',
+    textAlign: 'center'
+  },
+
 });
 
 export default LoginRegisterScreen;

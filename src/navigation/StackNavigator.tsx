@@ -8,10 +8,14 @@ import { RootStackParamList } from '@navigation/types';
 
 const Stack = createStackNavigator<RootStackParamList>();
 
-const StackNavigator = () => {
+interface StackNavigatorProps {
+  initialRouteName?: keyof RootStackParamList;
+}
+
+const StackNavigator: React.FC<StackNavigatorProps> = ({ initialRouteName = "LoginRegisterScreen" }) => {
   return (
    <NavigationContainer>
-    <Stack.Navigator initialRouteName="LoginRegisterScreen" id={undefined}>
+    <Stack.Navigator initialRouteName={initialRouteName} id={undefined}>
       <Stack.Screen name="LoginRegisterScreen" component={LoginRegisterScreen} options={{ headerShown : false}} />
       <Stack.Screen name="DashboardScreen" component={DashboardScreen} options={{title : 'Events'}}/>
       <Stack.Screen name="AddEventScreen" component={AddEventScreen} options={{ title: 'Add Event' }} />

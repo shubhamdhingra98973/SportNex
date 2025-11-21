@@ -11,6 +11,7 @@ module.exports = {
           '@features': './src/features',
           '@navigation': './src/navigation',
           '@staticdata': './src/staticdata',
+          '@storage'  : './src/storage',
         },
       },
     ],
