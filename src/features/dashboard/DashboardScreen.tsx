@@ -62,6 +62,7 @@ const DashboardScreen = () => {
   const [error, setError] = useState<string | null>(null)
   const [selectedEvent, setSelectedEvent] = useState<EventSchema | null>(null)
   const [requestTracker, setRequestTracker] = useState<Record<string, boolean>>({})
+  const [showMyEventsOnly, setShowMyEventsOnly] = useState(false)
 
   const navigateToAddEvent = useCallback(() => {
     navigation.navigate('AddEventScreen')
@@ -152,6 +153,13 @@ const DashboardScreen = () => {
   }, [])
 
   const userName = loggedInName?.trim().length ? loggedInName : 'there'
+
+  const filteredEvents = React.useMemo(() => {
+    if (!showMyEventsOnly || !loggedInUser_ID) {
+      return events
+    }
+    return events.filter(event => String(event.hostedBy?.id ?? '') === String(loggedInUser_ID))
+  }, [events, showMyEventsOnly, loggedInUser_ID])
 
   const handleRequestToJoin = async () => {
     if (!selectedEvent || !selectedEventKey) return
@@ -287,14 +295,26 @@ const DashboardScreen = () => {
     <View style={styles.container}>
       <FlatList
         contentContainerStyle={styles.listContent}
-        data={events}
+        data={filteredEvents}
         refreshing={loading}
         onRefresh={fetchEvents}
         keyExtractor={(item, index) => item.id ?? `${item.eventTitle}-${item.createdDate ?? index}`}
         ListHeaderComponent={
-          <View style={styles.greetingContainer}>
-            <Text style={styles.greetingName}>Hi {userName},</Text>
-            <Text style={styles.greetingMessage}>{greeting}</Text>
+          <View>
+            <View style={styles.greetingContainer}>
+              <Text style={styles.greetingName}>Hi {userName},</Text>
+              <Text style={styles.greetingMessage}>{greeting}</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.checkboxRow}
+              activeOpacity={0.8}
+              onPress={() => setShowMyEventsOnly(prev => !prev)}
+            >
+              <View style={[styles.checkbox, showMyEventsOnly && styles.checkboxChecked]}>
+                {showMyEventsOnly && <View style={styles.checkboxIndicator} />}
+              </View>
+              <Text style={styles.checkboxLabel}>Show only my events</Text>
+            </TouchableOpacity>
           </View>
         }
         ListEmptyComponent={
@@ -599,5 +619,37 @@ const styles = ScaledSheet.create({
     color: Colors.white,
     fontSize: '12@ms',
     fontWeight: '600',
+  },
+  checkboxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: '8@vs',
+    marginBottom: '12@vs',
+  },
+  checkbox: {
+    width: '22@s',
+    height: '22@s',
+    borderRadius: '6@s',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.primaryBlue,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.eventCardBgColor,
+  },
+  checkboxChecked: {
+    backgroundColor: Colors.primaryBlue,
+    borderColor: Colors.primaryBlue,
+  },
+  checkboxIndicator: {
+    width: '10@s',
+    height: '10@s',
+    borderRadius: '3@s',
+    backgroundColor: Colors.dashboardBgColor,
+  },
+  checkboxLabel: {
+    marginLeft: '12@s',
+    color: Colors.white,
+    flex: 1,
+    fontSize: '14@ms',
   },
 })
