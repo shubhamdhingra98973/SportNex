@@ -1,12 +1,15 @@
 import React, { useMemo, useState } from 'react'
 import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import type { KeyboardTypeOptions, StyleProp, TextStyle } from 'react-native'
+import { useNavigation } from '@react-navigation/native'
+import { StackNavigationProp } from '@react-navigation/stack'
 import { Colors, getCurrentTimeMilliSeconds } from '@global'
 import { ScaledSheet } from 'react-native-size-matters'
 import EventRepository from '@storage/sqlite/repository/EventRepository'
 import type { EventSchema } from '@storage/sqlite/schema/EventSchema'
 import { useSelector } from 'react-redux'
 import type { IRootState } from '@storage/redux/configureStore'
+import type { RootStackParamList } from '@navigation/types'
 
 type EventFormState = {
   eventName: string
@@ -25,6 +28,7 @@ const initialFormState: EventFormState = {
 }
 
 const AddEventScreen = () => {
+  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>()
   const [form, setForm] = useState<EventFormState>(initialFormState)
   const [touched, setTouched] = useState<Record<keyof EventFormState, boolean>>({
     eventName: false,
@@ -34,6 +38,7 @@ const AddEventScreen = () => {
     location: false,
   })
   const [hasSubmitted, setHasSubmitted] = useState(false)
+  const [joinAsParticipant, setJoinAsParticipant] = useState(false)
   const user = useSelector((state: IRootState) => state.user)
 
   const errors = useMemo(() => validateForm(form), [form])
@@ -57,6 +62,15 @@ const AddEventScreen = () => {
     const eventDate = new Date(form.dateTime)
     console.log("user Id :",user.loggedInUser_ID);
     console.log("user Name :", user.loggedInName);
+    const participants: EventSchema['participants'] = []
+    if (joinAsParticipant) {
+      participants.push({
+        id: String(user.loggedInUser_ID),
+        name: user.loggedInName || 'User',
+        status: 'confirmed',
+      })
+    }
+
     const newEvent: EventSchema = {
       eventTitle: form.eventName.trim(),
       eventDescription: form.description.trim(),
@@ -65,10 +79,10 @@ const AddEventScreen = () => {
       eventDateTime: Math.floor(eventDate.getTime()),
       createdDate: getCurrentTimeMilliSeconds(),
       hostedBy: {
-        id: user.loggedInUser_ID,
+        id: String(user.loggedInUser_ID),
         name: user.loggedInName || 'User',
       },
-      participants: [],
+      participants,
     }
 
     try {
@@ -79,17 +93,24 @@ const AddEventScreen = () => {
         return
       }
 
-      Alert.alert('Success', 'Event saved successfully!')
-
-      setForm(initialFormState)
-      setTouched({
-        eventName: false,
-        description: false,
-        maxPlayers: false,
-        dateTime: false,
-        location: false,
-      })
-      setHasSubmitted(false)
+      Alert.alert('Success', 'Event saved successfully!', [
+        {
+          text: 'OK',
+          onPress: () => {
+            setForm(initialFormState)
+            setTouched({
+              eventName: false,
+              description: false,
+              maxPlayers: false,
+              dateTime: false,
+              location: false,
+            })
+            setHasSubmitted(false)
+            setJoinAsParticipant(false)
+            navigation.goBack()
+          },
+        },
+      ])
     } catch (error) {
       console.error('Error saving event', error)
       Alert.alert('Error', 'An unexpected error occurred while saving the event.')
@@ -155,6 +176,17 @@ const AddEventScreen = () => {
           onBlur={() => handleBlur('location')}
           errorMessage={showError('location') ? errors.location : undefined}
         />
+
+        <TouchableOpacity
+          style={styles.checkboxRow}
+          activeOpacity={0.8}
+          onPress={() => setJoinAsParticipant(prev => !prev)}
+        >
+          <View style={[styles.checkbox, joinAsParticipant && styles.checkboxChecked]}>
+            {joinAsParticipant && <View style={styles.checkboxIndicator} />}
+          </View>
+          <Text style={styles.checkboxLabel}>Join this event as a participant</Text>
+        </TouchableOpacity>
 
         <TouchableOpacity
           style={[styles.submitButton, !isFormValid && styles.disabledButton]}
@@ -299,6 +331,36 @@ const styles = ScaledSheet.create({
   },
   disabledButton: {
     opacity: 0.4,
+  },
+  checkboxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: '8@s',
+  },
+  checkbox: {
+    width: '22@s',
+    height: '22@s',
+    borderRadius: '6@s',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.primaryBlue,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.eventCardBgColor,
+  },
+  checkboxChecked: {
+    backgroundColor: Colors.primaryBlue,
+    borderColor: Colors.primaryBlue,
+  },
+  checkboxIndicator: {
+    width: '10@s',
+    height: '10@s',
+    borderRadius: '3@s',
+    backgroundColor: Colors.dashboardBgColor,
+  },
+  checkboxLabel: {
+    marginLeft: '12@s',
+    color: Colors.white,
+    flex: 1,
   },
 })
 

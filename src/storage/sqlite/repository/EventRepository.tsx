@@ -70,7 +70,7 @@ export default class EventRepository {
     try {
       const db = await SqliteManager.getDatabase();
       const [results] = await db.executeSql(
-        `SELECT * FROM events ORDER BY eventDateTime ASC`,
+        `SELECT * FROM events ORDER BY createdDate DESC`,
       );
 
       const events: EventSchema[] = [];
