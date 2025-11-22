@@ -154,6 +154,46 @@ const DashboardScreen = () => {
 
   const userName = loggedInName?.trim().length ? loggedInName : 'there'
 
+  const handleEventSelect = useCallback(async (event: EventSchema) => {
+    const isEventHost = String(event.hostedBy?.id ?? '') === String(loggedInUser_ID ?? '')
+    const eventHasPassed = hasEventPassed(event.eventDateTime)
+
+    // If host is viewing their own past event, update pending participants to expired
+    if (isEventHost && eventHasPassed && event.id) {
+      const participants = event.participants ?? []
+      const hasPendingParticipants = participants.some(p => p.status === 'pending')
+
+      if (hasPendingParticipants) {
+        try {
+          const latestEvent = await EventRepository.getEventById(event.id)
+          const latestParticipants = latestEvent?.participants ?? participants
+          const updatedParticipants = latestParticipants.map(participant =>
+            participant.status === 'pending' ? { ...participant, status: 'expired' as const } : participant,
+          )
+
+          const hasChanges = updatedParticipants.some(
+            (p, idx) => p.status !== latestParticipants[idx]?.status,
+          )
+
+          if (hasChanges) {
+            const success = await EventRepository.updateEvent(event.id, { participants: updatedParticipants })
+            if (success) {
+              // Update the event with the new participants before setting it as selected
+              setSelectedEvent({ ...event, participants: updatedParticipants })
+              await fetchEvents()
+              return
+            }
+          }
+        } catch (err) {
+          console.error('Failed to update pending participants to expired', err)
+        }
+      }
+    }
+
+    // If no update needed, just set the selected event
+    setSelectedEvent(event)
+  }, [loggedInUser_ID, fetchEvents])
+
   const filteredEvents = React.useMemo(() => {
     if (!showMyEventsOnly || !loggedInUser_ID) {
       return events
@@ -330,7 +370,7 @@ const DashboardScreen = () => {
           <EventCard
             event={item}
             onPress={() => {
-              setSelectedEvent(item)
+              handleEventSelect(item)
             }}
           />
         )}
