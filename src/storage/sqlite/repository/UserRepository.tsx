@@ -1,7 +1,7 @@
 import {generateNewObjectId} from '@global';
 
 import SqliteManager from '@storage/sqlite/SqliteManager';
-import {UserSchema} from '@storage/sqlite/schema/userSchema';
+import {UserSchema} from '@storage/sqlite/schema/UserSchema';
 import {
   decodeData,
   nullable,

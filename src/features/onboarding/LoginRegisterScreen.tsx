@@ -106,7 +106,7 @@ const LoginRegisterScreen = () => {
           const token = `token_${user.id}_${Date.now()}`;
 
           // Dispatch register action
-          dispatch(register(token, user.id?.toString() || '', 'user', user.name?.toString()));
+          dispatch(login(token, user.id?.toString() || '', 'user', user.name?.toString()));
 
           // Save auth state to AsyncStorage
           await saveAuthState({

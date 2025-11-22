@@ -12,7 +12,6 @@ const initialState : IUserState =  {
 const user =  (state = initialState, action : AnyAction) => {
 switch (action.type) {
     case type.LOGIN:
-    case type.REGISTER:
         return {
           ...state,
           loggedInToken: action.loggedInToken,
