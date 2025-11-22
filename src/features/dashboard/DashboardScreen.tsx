@@ -1,9 +1,21 @@
+/**
+ * DashboardScreen Component
+ * 
+ * Main screen displaying all events with the following features:
+ * - View all events or filter to show only events created by the logged-in user
+ * - Request to join events (if not past and not full)
+ * - Withdraw from events (if not past)
+ * - Host can accept/reject participant requests
+ * - Automatic expiration of pending participants when host views past events
+ * - Personalized greeting based on time of day
+ */
+
 import React, { useCallback, useLayoutEffect, useState } from 'react'
 import { ActivityIndicator, Alert, FlatList, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native'
 import { useDispatch, useSelector } from 'react-redux'
 import { ScaledSheet } from 'react-native-size-matters'
-import {Colors , formatDate } from '@global'
+import {Colors , formatDate , normalizeTimestampToSecondsString} from '@global'
 import { StackNavigationProp } from '@react-navigation/stack'
 import { RootStackParamList } from '@navigation/types'
 import { IRootState } from '@storage/redux/configureStore'
@@ -12,27 +24,29 @@ import type { EventSchema } from '@storage/sqlite/schema/EventSchema'
 import { logout } from '@storage/redux/actions/userActions'
 import { clearAuthState } from '@storage/authStorage'
 
-const normalizeTimestampToSecondsString = (timestamp: number | string): string => {
-  const numericValue = Number(timestamp)
-  if (!Number.isFinite(numericValue) || numericValue <= 0) {
-    return '0'
-  }
 
-  const needsConversion = numericValue > 1e11
-  const seconds = needsConversion ? Math.floor(numericValue / 1000) : Math.floor(numericValue)
-  return seconds.toString()
-}
-
+/**
+ * Checks if an event's date/time has already passed
+ * @param timestamp - Event timestamp (can be in milliseconds or seconds)
+ * @returns true if the event time is in the past, false otherwise
+ */
 const hasEventPassed = (timestamp: number | string): boolean => {
   const numericValue = Number(timestamp)
   if (!Number.isFinite(numericValue)) {
     return false
   }
+  // Determine if timestamp is in milliseconds (> 1e12) or seconds
   const isMilliseconds = numericValue > 1e12
   const eventTimeInMs = isMilliseconds ? numericValue : numericValue * 1000
   return eventTimeInMs <= Date.now()
 }
 
+/**
+ * EventCard Component
+ * Displays a single event card with key information
+ * @param event - The event data to display
+ * @param onPress - Callback when the card is pressed
+ */
 const EventCard = ({ event, onPress }: { event: EventSchema; onPress: () => void }) => {
   const confirmed = (event.participants ?? []).filter(p => p.status === 'confirmed').length
   const formattedDate = formatDate(normalizeTimestampToSecondsString(event.eventDateTime))
@@ -50,24 +64,36 @@ const EventCard = ({ event, onPress }: { event: EventSchema; onPress: () => void
 }
 
 const DashboardScreen = () => {
+  // Navigation and route setup
   const route = useRoute()
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>()
   const { token: tokenFromParams } = (route.params as { token?: string }) ?? {}
+  
+  // Redux state - user authentication and profile data
   const { loggedInToken, loggedInUser_ID, loggedInName } = useSelector((state: IRootState) => state.user)
   const dispatch = useDispatch()
+  
   // Use token from params if available, otherwise use token from Redux state
   const token = tokenFromParams || loggedInToken || loggedInUser_ID
-  const [events, setEvents] = useState<EventSchema[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [selectedEvent, setSelectedEvent] = useState<EventSchema | null>(null)
-  const [requestTracker, setRequestTracker] = useState<Record<string, boolean>>({})
-  const [showMyEventsOnly, setShowMyEventsOnly] = useState(false)
+  
+  // Component state management
+  const [events, setEvents] = useState<EventSchema[]>([]) // All events fetched from database
+  const [loading, setLoading] = useState(true) // Loading state for events fetch
+  const [error, setError] = useState<string | null>(null) // Error message if events fail to load
+  const [selectedEvent, setSelectedEvent] = useState<EventSchema | null>(null) // Currently selected event for modal view
+  const [requestTracker, setRequestTracker] = useState<Record<string, boolean>>({}) // Tracks pending join requests locally
+  const [showMyEventsOnly, setShowMyEventsOnly] = useState(false) // Filter toggle for showing only user's events
 
+  /**
+   * Navigation handler - navigates to AddEventScreen to create a new event
+   */
   const navigateToAddEvent = useCallback(() => {
     navigation.navigate('AddEventScreen')
   }, [navigation])
 
+  /**
+   * Logout handler - clears authentication state and redirects to login screen
+   */
   const handleLogout = useCallback(() => {
     Alert.alert('Logout', 'Are you sure you want to logout?', [
       { text: 'Cancel', style: 'cancel' },
@@ -86,6 +112,9 @@ const DashboardScreen = () => {
     ])
   }, [dispatch, navigation])
 
+  /**
+   * Configure navigation header with Add Event button (left) and Logout button (right)
+   */
   useLayoutEffect(() => {
     navigation.setOptions({
       headerLeft: () => (
@@ -101,23 +130,25 @@ const DashboardScreen = () => {
     })
   }, [navigation, handleLogout, navigateToAddEvent])
 
-  const selectedParticipants = selectedEvent?.participants ?? []
-  const selectedEventKey = selectedEvent ? `${selectedEvent.eventTitle}-${selectedEvent.createdDate}` : ''
-  const currentUserId = loggedInUser_ID ? String(loggedInUser_ID) : ''
-  const currentParticipant = selectedParticipants.find(participant => String(participant.id) === currentUserId)
-  const isSelectedEventPast = selectedEvent ? hasEventPassed(selectedEvent.eventDateTime) : false
-  const hasApplied =
+  // Derived values from selectedEvent - computed for use in UI and logic
+  const selectedParticipants = selectedEvent?.participants ?? [] // All participants of the selected event
+  const selectedEventKey = selectedEvent ? `${selectedEvent.eventTitle}-${selectedEvent.createdDate}` : '' // Unique key for tracking requests
+  const currentUserId = loggedInUser_ID ? String(loggedInUser_ID) : '' // Current user ID as string
+  const currentParticipant = selectedParticipants.find(participant => String(participant.id) === currentUserId) // Current user's participant record
+  const isSelectedEventPast = selectedEvent ? hasEventPassed(selectedEvent.eventDateTime) : false // Whether selected event has already occurred
+  const hasApplied = // Whether current user has already requested to join or is a participant
     !!selectedEvent &&
     (Boolean(currentParticipant) || (selectedEventKey && requestTracker[selectedEventKey]))
-  const confirmedCount = selectedParticipants.filter(p => p.status === 'confirmed').length
-  const isHost = selectedEvent ? String(selectedEvent.hostedBy?.id ?? '') === String(loggedInUser_ID ?? '') : false
-  const isEventFull = selectedEvent ? confirmedCount >= (selectedEvent.maxPlayerLimit ?? 0) : false
-  const shouldShowRequestButton = !!selectedEvent && !hasApplied && !isSelectedEventPast
-  const showWithdrawButton =
+  const confirmedCount = selectedParticipants.filter(p => p.status === 'confirmed').length // Number of confirmed participants
+  const isHost = selectedEvent ? String(selectedEvent.hostedBy?.id ?? '') === String(loggedInUser_ID ?? '') : false // Whether current user is the event host
+  const isEventFull = selectedEvent ? confirmedCount >= (selectedEvent.maxPlayerLimit ?? 0) : false // Whether event has reached max capacity
+  const shouldShowRequestButton = !!selectedEvent && !hasApplied && !isSelectedEventPast // Show "Request To Join" if user hasn't applied and event hasn't passed
+  const showWithdrawButton = // Show "Withdraw" if user is a participant with pending or confirmed status
     !!selectedEvent &&
     !!currentParticipant &&
     (currentParticipant.status === 'pending' || currentParticipant.status === 'confirmed')
-  const canWithdraw = showWithdrawButton && !isSelectedEventPast
+  const canWithdraw = showWithdrawButton && !isSelectedEventPast // Can withdraw only if event hasn't passed
+  // Participants visible in modal: hosts see all, others see only confirmed or themselves
   const visibleParticipants = isHost
     ? selectedParticipants
     : selectedParticipants.filter(
@@ -125,6 +156,10 @@ const DashboardScreen = () => {
           participant.status === 'confirmed' || String(participant.id) === String(loggedInUser_ID ?? ''),
       )
 
+  /**
+   * Fetches all events from the database
+   * Called on screen focus and when manually refreshed
+   */
   const fetchEvents = useCallback(async () => {
     try {
       setLoading(true)
@@ -139,26 +174,44 @@ const DashboardScreen = () => {
     }
   }, [])
 
+  /**
+   * Refetch events whenever the screen comes into focus
+   * Ensures data is up-to-date when returning from other screens
+   */
   useFocusEffect(
     useCallback(() => {
       fetchEvents()
     }, [fetchEvents]),
   )
 
+  /**
+   * Closes the event details modal
+   */
   const closeModal = () => setSelectedEvent(null)
 
+  /**
+   * Generates time-based greeting (Good Morning/Good Evening)
+   * Based on current hour of the day
+   */
   const greeting = React.useMemo(() => {
     const hour = new Date().getHours()
     return hour < 12 ? 'Good Morning' : 'Good Evening'
   }, [])
 
+  // User name for greeting, defaults to 'there' if name is not available
   const userName = loggedInName?.trim().length ? loggedInName : 'there'
 
+  /**
+   * Handles event selection when user taps on an event card
+   * Special logic: If host views their own past event, automatically expires pending participants
+   * @param event - The event that was selected
+   */
   const handleEventSelect = useCallback(async (event: EventSchema) => {
     const isEventHost = String(event.hostedBy?.id ?? '') === String(loggedInUser_ID ?? '')
     const eventHasPassed = hasEventPassed(event.eventDateTime)
 
     // If host is viewing their own past event, update pending participants to expired
+    // This ensures pending requests are automatically marked as expired after the event occurs
     if (isEventHost && eventHasPassed && event.id) {
       const participants = event.participants ?? []
       const hasPendingParticipants = participants.some(p => p.status === 'pending')
@@ -194,6 +247,10 @@ const DashboardScreen = () => {
     setSelectedEvent(event)
   }, [loggedInUser_ID, fetchEvents])
 
+  /**
+   * Filters events based on the "Show only my events" checkbox
+   * When checked, shows only events where the logged-in user is the host
+   */
   const filteredEvents = React.useMemo(() => {
     if (!showMyEventsOnly || !loggedInUser_ID) {
       return events
@@ -201,6 +258,12 @@ const DashboardScreen = () => {
     return events.filter(event => String(event.hostedBy?.id ?? '') === String(loggedInUser_ID))
   }, [events, showMyEventsOnly, loggedInUser_ID])
 
+  /**
+   * Handles user's request to join an event
+   * Validates conditions (not logged in, event full, event passed) before processing
+   * If user is the host, automatically confirms their participation
+   * Otherwise, adds them as a pending participant
+   */
   const handleRequestToJoin = async () => {
     if (!selectedEvent || !selectedEventKey) return
     if (!loggedInUser_ID) {
@@ -260,12 +323,18 @@ const DashboardScreen = () => {
     }
   }
 
+  /**
+   * Handles user withdrawal from an event
+   * Removes the user from the participant list
+   * Only allowed if the event hasn't passed yet
+   */
   const handleWithdrawFromEvent = async () => {
     if (!selectedEvent?.id || !currentUserId) {
       Alert.alert('Unavailable', 'Unable to withdraw from this event right now.')
       return
     }
 
+    // Prevent withdrawal from past events
     if (hasEventPassed(selectedEvent.eventDateTime)) {
       Alert.alert('Closed', 'This event has already occurred. Withdrawals are no longer allowed.')
       return
@@ -304,12 +373,19 @@ const DashboardScreen = () => {
     }
   }
 
+  /**
+   * Updates a participant's status (host only)
+   * Used to accept/reject participant requests
+   * @param participantId - ID of the participant to update
+   * @param status - New status: 'confirmed', 'rejected', or 'expired'
+   */
   const handleUpdateParticipantStatus = async (
     participantId: string,
     status: 'confirmed' | 'rejected' | 'expired',
   ) => {
     if (!selectedEvent?.id) return
     try {
+      // Fetch latest event data to ensure we have the most up-to-date participant list
       const latestEvent = await EventRepository.getEventById(selectedEvent.id)
       const participants = latestEvent?.participants ?? selectedParticipants
       const updatedParticipants = participants.map(participant =>
@@ -322,6 +398,7 @@ const DashboardScreen = () => {
         return
       }
 
+      // Update local state and refresh events list
       setSelectedEvent(prev => (prev?.id === selectedEvent.id ? { ...prev, participants: updatedParticipants } : prev))
       await fetchEvents()
       Alert.alert('Success', `Participant status updated to ${status}.`)
@@ -333,6 +410,7 @@ const DashboardScreen = () => {
 
   return (
     <View style={styles.container}>
+      {/* Main events list */}
       <FlatList
         contentContainerStyle={styles.listContent}
         data={filteredEvents}
@@ -341,10 +419,12 @@ const DashboardScreen = () => {
         keyExtractor={(item, index) => item.id ?? `${item.eventTitle}-${item.createdDate ?? index}`}
         ListHeaderComponent={
           <View>
+            {/* Personalized greeting section */}
             <View style={styles.greetingContainer}>
               <Text style={styles.greetingName}>Hi {userName},</Text>
               <Text style={styles.greetingMessage}>{greeting}</Text>
             </View>
+            {/* Filter checkbox - show only events created by logged-in user */}
             <TouchableOpacity
               style={styles.checkboxRow}
               activeOpacity={0.8}
@@ -376,16 +456,19 @@ const DashboardScreen = () => {
         )}
       />
 
+      {/* Event details modal - shown when an event is selected */}
       <Modal animationType="slide" transparent visible={!!selectedEvent} onRequestClose={closeModal}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{selectedEvent?.eventTitle}</Text>
+            {/* Participants list */}
             <ScrollView style={styles.participantList} contentContainerStyle={styles.participantListContent}>
               {visibleParticipants.length === 0 ? (
                 <Text style={styles.emptyStateText}>No players have joined yet.</Text>
               ) : (
                 visibleParticipants.map(player => {
                   const isPending = player.status === 'pending'
+                  // Host can accept/reject pending requests
                   const showActions = isHost && isPending
                   return (
                   <View key={player.id} style={styles.participantRow}>
@@ -394,6 +477,7 @@ const DashboardScreen = () => {
                       <Text style={styles.participantStatus}>Status: {player.status}</Text>
                     </View>
                     {showActions ? (
+                      // Host action buttons for pending participants
                       <View style={styles.actionButtons}>
                         <TouchableOpacity
                           style={[styles.actionButton, styles.actionButtonAccept]}
@@ -407,6 +491,7 @@ const DashboardScreen = () => {
                         </TouchableOpacity>
                       </View>
                     ) : (
+                      // Status badge for non-pending or non-host view
                       <View style={[styles.statusPill, styles[`statusPill_${player.status}` as keyof typeof styles]]}>
                         <Text style={styles.statusPillText}>{player.status}</Text>
                       </View>
@@ -417,11 +502,13 @@ const DashboardScreen = () => {
               )}
             </ScrollView>
 
+            {/* Request to join button - shown if user hasn't applied and event hasn't passed */}
             {shouldShowRequestButton && (
               <TouchableOpacity style={styles.requestButton} onPress={handleRequestToJoin}>
                 <Text style={styles.requestButtonText}>Request To Join</Text>
               </TouchableOpacity>
             )}
+            {/* Withdraw button - shown if user is a participant (pending or confirmed) */}
             {showWithdrawButton && (
               <TouchableOpacity
                 style={[
@@ -449,6 +536,10 @@ const DashboardScreen = () => {
 
 export default DashboardScreen;
 
+/**
+ * Component styles using ScaledSheet for responsive sizing
+ * Uses scaled units (@s for scale, @vs for vertical scale, @ms for moderate scale)
+ */
 const styles = ScaledSheet.create({
   container: {
     flex: 1,

@@ -23,3 +23,15 @@ export const getCurrentTimeInSecondsE = () => {
 export const getCurrentTimeMilliSecondsE = () => {
   return Math.floor(new Date().getTime());
 };
+
+
+export const normalizeTimestampToSecondsStringE = (timestamp: number | string): string => {
+  const numericValue = Number(timestamp)
+  if (!Number.isFinite(numericValue) || numericValue <= 0) {
+    return '0'
+  }
+
+  const needsConversion = numericValue > 1e11
+  const seconds = needsConversion ? Math.floor(numericValue / 1000) : Math.floor(numericValue)
+  return seconds.toString()
+}

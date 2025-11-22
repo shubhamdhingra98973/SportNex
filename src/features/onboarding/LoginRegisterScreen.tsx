@@ -1,4 +1,4 @@
-import { Button, Text, View, TextInput, Alert, ActivityIndicator } from 'react-native';
+import { Button, Text, View, TextInput, Alert, ActivityIndicator, TouchableOpacity } from 'react-native';
 import React, { useState } from 'react';
 import {
   SafeAreaView,
@@ -11,7 +11,7 @@ import { StackNavigationProp } from "@react-navigation/stack";
 import { RootStackParamList } from '@navigation/types';
 import { useDispatch } from 'react-redux';
 import UserRepository from '@storage/sqlite/repository/UserRepository';
-import { login, register } from '@storage/redux/actions/userActions';
+import { login} from '@storage/redux/actions/userActions';
 import { saveAuthState } from '@storage/authStorage';
 
 type NavProp = StackNavigationProp<RootStackParamList, "LoginRegisterScreen">;
@@ -25,6 +25,7 @@ const LoginRegisterScreen = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const navigation = useNavigation<NavProp>();
 
   const validateInputs = (): boolean => {
@@ -144,6 +145,7 @@ const LoginRegisterScreen = () => {
     setName('');
     setUsername('');
     setPassword('');
+    setShowPassword(false);
   }
   return (
     <View style={styles.container}>
@@ -175,17 +177,26 @@ const LoginRegisterScreen = () => {
             editable={!loading}
             autoCapitalize="none"
           />
-          <TextInput
-            placeholder="Password"
-            value={password}
-            secureTextEntry
-            onChangeText={(text) => {
-              setPassword(text);
-              setError('');
-            }}
-            style={styles.txtInputPwdStyles}
-            editable={!loading}
-          />
+          <View style={styles.passwordContainer}>
+            <TextInput
+              placeholder="Password"
+              value={password}
+              secureTextEntry={!showPassword}
+              onChangeText={(text) => {
+                setPassword(text);
+                setError('');
+              }}
+              style={styles.txtInputPwdStyles}
+              editable={!loading}
+            />
+            <TouchableOpacity
+              onPress={() => setShowPassword(!showPassword)}
+              style={styles.eyeButton}
+              disabled={loading}
+            >
+              <Text style={styles.eyeButtonText}>{showPassword ? '👁️' : '👁'}</Text>
+            </TouchableOpacity>
+          </View>
           {error ? (
             <Text style={styles.errorText}>{error}</Text>
           ) : null}
@@ -260,13 +271,28 @@ const styles = ScaledSheet.create({
     fontSize: '18@ms',
   },
 
-  txtInputPwdStyles: {
+  passwordContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
     borderWidth: '1@s',
     marginTop: '24@vs',
     height: '50@vs',
-    padding: '10@ms',
     borderRadius: '5@s',
+    backgroundColor: Colors.white,
+  },
+  txtInputPwdStyles: {
+    flex: 1,
+    padding: '10@ms',
     fontSize: '18@ms',
+    borderWidth: 0,
+  },
+  eyeButton: {
+    padding: '10@s',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  eyeButtonText: {
+    fontSize: '20@ms',
   },
 
   textHeading: { 

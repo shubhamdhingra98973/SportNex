@@ -17,21 +17,6 @@ export const login: IUserAction['login'] = (
     };
   };
 
-export const register: IUserAction['register'] = (
-    loggedInToken,
-    loggedInUser_ID,
-    loggedInRole,
-    loggedInName
-  ) => {
-    return {
-      type: type.REGISTER,
-      loggedInToken,
-      loggedInUser_ID,
-      loggedInRole,
-      loggedInName
-    };
-  };
-
 export const logout: IUserAction['logout'] = () => {
     return {
       type: type.LOGOUT,
